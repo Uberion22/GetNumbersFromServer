@@ -13,11 +13,10 @@ namespace GetNumbersFromServer
         {
             var numbersLoader = new NumbersLoader(server, port);
             numbersLoader.SendMessage(greetengsMessage);
-            //result = 4925680,5
+            //var result = 4925680.5f;
             var result = await numbersLoader.StartGettingNumbersTasksAsync();
 
             numbersLoader.SendMessage($"Check {result}\n");
-
             Console.ReadLine();
         }
     }

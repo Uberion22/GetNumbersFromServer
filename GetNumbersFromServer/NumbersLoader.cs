@@ -103,9 +103,9 @@ namespace GetNumbersFromServer
                 StringBuilder response = new StringBuilder();
                 string message = $"{index}\n";
                 byte[] numberInByte = Encoding.UTF8.GetBytes(message);
-                byte[] data = new byte[256];
+                byte[] data = new byte[4];
                 bool firstFound = false;
-                bool endOfTime;
+                bool timeNotEnded = true;
                 bool isLastSymbol;
                 int badSymbolsCount = 0;
                 
@@ -128,18 +128,18 @@ namespace GetNumbersFromServer
                     {
                         badSymbolsCount++;
                     }
-                    endOfTime = stopWatch.ElapsedMilliseconds > maxDelay;
+                    timeNotEnded = stopWatch.ElapsedMilliseconds < maxDelay;
                     
                     isLastSymbol = str.Contains("\n") || badSymbolsCount >= 3;
                 }
-                while (!isLastSymbol && !endOfTime) ;
+                while (!isLastSymbol && timeNotEnded && stream.DataAvailable) ;
 
-                var resString = !endOfTime
+                var resString = timeNotEnded
                     ? $"Completed {currentTaskComplited++}, number: {index}, result:{response}"
                     : $"Timed out: {currentTaskComplited++}, number: {index}, result:{response}, time: {stopWatch.ElapsedMilliseconds}";
                 Console.WriteLine(resString);
                 Console.ForegroundColor = ConsoleColor.Blue;
-                if (!endOfTime)
+                if (timeNotEnded)
                 {
                     Console.WriteLine(response);
                 }
@@ -147,7 +147,7 @@ namespace GetNumbersFromServer
                 stream.Close();
                 client.Close();
                 
-                var result = endOfTime ? Int64.Parse(resString) : notRecieved;
+                var result = timeNotEnded ? Int64.Parse(response.ToString()) : notRecieved;
                 
                 return new ServerResponse(index, result);
             }
@@ -178,12 +178,16 @@ namespace GetNumbersFromServer
                 byte[] data = new byte[2];
                 byte[] messageInByte = Encoding.UTF8.GetBytes(message);
                 stream.Write(messageInByte);
+                stream.ReadTimeout = maxDelay;
+                bool lastSymbol = false;
                 do
                 {
                     stream.Flush();
                     int bytes = stream.Read(data, 0, data.Length);
+                    
                     response.Append(Encoding.GetEncoding("koi8r").GetString(data, 0, bytes));
-                } while (stream.DataAvailable);
+                    lastSymbol = response.ToString().Contains("\r\n");
+                } while (stream.DataAvailable || !lastSymbol);
                 Console.WriteLine(response.ToString());
                 stream.Close();
                 client.Close();

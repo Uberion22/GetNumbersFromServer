@@ -42,9 +42,6 @@ namespace GetNumbersFromServer
                 }
             }
 
-            recivedNumbers[5] = -1;
-            recivedNumbers[19] = -1;
-            recivedNumbers[42] = -1;
             return recivedNumbers;
         }
     }
