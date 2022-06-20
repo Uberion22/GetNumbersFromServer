@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace GetNumbersFromServer
@@ -16,13 +14,14 @@ namespace GetNumbersFromServer
         private int currentStep;
         private int maxDelay = 25000;
         private int maxNumber = 2018;
-        private int port;
-        private IPAddress ip;
-        public static int currentTaskComplited;
-        public int nextIndex = 30;
-        public int maxTasks = 30;
-        public Dictionary<int, long> recivedNumbers = new Dictionary<int, long>();
+        private readonly int port;
+        private readonly IPAddress ip;
+        private int currentTaskComplited;
+        private int nextIndex = 30;
+        private int maxTasks = 30;
+        private Dictionary<int, long> recivedNumbers = new Dictionary<int, long>();
         private object locker = new object();
+        private  const int notRecieved = -1;
 
         public NumbersLoader(string ipString, int port)
         {
@@ -31,18 +30,22 @@ namespace GetNumbersFromServer
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         }
 
-        public async Task<float> StartTasksAsync()
+        /// <summary>
+        /// Run the task of getting 2018 numbers
+        /// </summary>
+        /// <returns>Result</returns>
+        public async Task<float> StartGettingNumbersTasksAsync()
         {
             nextIndex = maxTasks;
             recivedNumbers = FileSaverAndLoader.LoadNumbersFromFile();
 
-            List<Task<ServerResponce>> tasks = new List<Task<ServerResponce>>();
-            var notReceived = recivedNumbers.Where(r => r.Value <= -1).Select(k => k.Key).ToList();
-            Console.WriteLine($"Проход по массиву {++currentStep}. Не получено {notReceived.Count} чисел");
+            List<Task<ServerResponse>> tasks = new List<Task<ServerResponse>>();
+            var notReceived = recivedNumbers.Where(r => r.Value <= notRecieved).Select(k => k.Key).ToList();
+            Console.WriteLine($"Traversing an array of keys {++currentStep}. Not received {notReceived.Count}");
             for (int i = 0; i < maxTasks && i < notReceived.Count; i++)
             {
                 var index = notReceived[i];
-                tasks.Add(Task.Run(() => GetNumbersFromStream(ip, port, index)));
+                tasks.Add(Task.Run(() => GetNumberFromStream(index)));
             }
             
             while (nextIndex <= maxNumber || tasks.Any()) 
@@ -59,45 +62,55 @@ namespace GetNumbersFromServer
                     if (tasks.Count < maxTasks && nextIndex < notReceived.Count)
                     {
                         var currentIndex = nextIndex;
-                        tasks.Add(Task.Run(() => GetNumbersFromStream(ip, port, notReceived[currentIndex])));
+                        tasks.Add(Task.Run(() => GetNumberFromStream(notReceived[currentIndex])));
                         nextIndex++;
                     }
                 }
 
             }
-            Console.WriteLine("Ждем 5 сек и запускаем новый проход");
-            Thread.Sleep(5);
 
-            return recivedNumbers.Any(r => r.Value < 0) ? await Task.Run(StartTasksAsync) : GetResult();
+            return recivedNumbers.Any(r => r.Value < 0) ? await Task.Run(StartGettingNumbersTasksAsync) : GetResult();
         }
 
+        /// <summary>
+        /// Get the median of an array(dictionary values).
+        /// </summary>
+        /// <returns>median</returns>
         private float GetResult()
         {
             List<long> list = new List<long>();
             foreach (var value in recivedNumbers.Values) list.Add(value);
+            // Used easy wai with standart sorting;
             list.Sort();
-            var result = (list[1007] + list[1008]) / 2;
-            Console.WriteLine($"Все задачи завершены, ответ {result}");
+            var result = (list[1008] + list[1009]) / 2.0f;
+            Console.WriteLine($"All tasks completed, result: {result}");
+            
             return result;
         }
 
-        public ServerResponce GetNumbersFromStream(IPAddress ip, int usedPort, int index = 1)
+        /// <summary>
+        /// Get a number from a message. If no response is received within the time limit,
+        /// the connection is closed without waiting for completion.
+        /// </summary>
+        /// <param name="index">Requested number</param>
+        /// <returns>Requested number, or -1 on failure</returns>
+        public ServerResponse GetNumberFromStream(int index = 1)
         {
-            TcpClient client = new TcpClient();
-            NetworkStream stream;
             try
             {
+                TcpClient client = new TcpClient();
                 Stopwatch stopWatch = new Stopwatch();
-                var firstFound = false;
-                var mes = $"{index}\n";
-                var numberInByte = Encoding.UTF8.GetBytes(mes);
-                bool endOfTime;
-                var badSymbolsCount = 0;
-                bool last;
-                client.Connect(ip, usedPort);
-                byte[] data = new byte[4];
                 StringBuilder response = new StringBuilder();
-                stream = client.GetStream();
+                string message = $"{index}\n";
+                byte[] numberInByte = Encoding.UTF8.GetBytes(message);
+                byte[] data = new byte[256];
+                bool firstFound = false;
+                bool endOfTime;
+                bool isLastSymbol;
+                int badSymbolsCount = 0;
+                
+                client.Connect(ip, port);
+                var stream = client.GetStream();
                 stream.Write(numberInByte);
                 stopWatch.Restart();
                 do
@@ -111,19 +124,19 @@ namespace GetNumbersFromServer
                         firstFound = true;
                         response.Append(str);
                     }
-                    else if (firstFound && badSymbolsCount < 3)
+                    else if (!string.IsNullOrEmpty(str) && firstFound && badSymbolsCount < 3)
                     {
                         badSymbolsCount++;
                     }
                     endOfTime = stopWatch.ElapsedMilliseconds > maxDelay;
                     
-                    last = str.Contains("\n") || badSymbolsCount >= 3;
+                    isLastSymbol = str.Contains("\n") || badSymbolsCount >= 3;
                 }
-                while (!last && stream.Socket.Connected && !endOfTime) ; // пока данные есть в потоке
+                while (!isLastSymbol && !endOfTime) ;
 
                 var resString = !endOfTime
-                    ? $"Завершено {currentTaskComplited++}, номер: {index}, результат:{response}"
-                    : $"Cтопвоч {currentTaskComplited++}, номер: {index}, результат:{response}, стопвоч: {stopWatch.ElapsedMilliseconds}";
+                    ? $"Completed {currentTaskComplited++}, number: {index}, result:{response}"
+                    : $"Timed out: {currentTaskComplited++}, number: {index}, result:{response}, time: {stopWatch.ElapsedMilliseconds}";
                 Console.WriteLine(resString);
                 Console.ForegroundColor = ConsoleColor.Blue;
                 if (!endOfTime)
@@ -131,12 +144,12 @@ namespace GetNumbersFromServer
                     Console.WriteLine(response);
                 }
                 Console.ResetColor();
-
-                // Закрываем потоки
                 stream.Close();
                 client.Close();
-                var result = endOfTime ? Int64.Parse(resString) : -1;
-                return new ServerResponce(index, result);
+                
+                var result = endOfTime ? Int64.Parse(resString) : notRecieved;
+                
+                return new ServerResponse(index, result);
             }
             catch (SocketException e)
             {
@@ -147,10 +160,14 @@ namespace GetNumbersFromServer
                 Console.WriteLine("Exception: {0}", e.Message);
             }
 
-            return new ServerResponce(index, -1);
+            return new ServerResponse(index, notRecieved);
         }
 
-        public  void GetMessage(string mes)
+        /// <summary>
+        /// Send message to server.
+        /// </summary>
+        /// <param name="message"> Message</param>
+        public  void SendMessage(string message)
         {
             try
             {
@@ -158,24 +175,22 @@ namespace GetNumbersFromServer
                 client.Connect(ip, port);
                 StringBuilder response = new StringBuilder();
                 NetworkStream stream = client.GetStream();
-                byte[] data = new byte[8];
-                var data2 = Encoding.UTF8.GetBytes(mes);
-                var end = false;
-                stream.Write(data2);
+                byte[] data = new byte[2];
+                byte[] messageInByte = Encoding.UTF8.GetBytes(message);
+                stream.Write(messageInByte);
                 do
                 {
                     stream.Flush();
                     int bytes = stream.Read(data, 0, data.Length);
                     response.Append(Encoding.GetEncoding("koi8r").GetString(data, 0, bytes));
-                    end = response.ToString().Contains("\n");
-                } while (stream.DataAvailable || ! end); // пока данные есть в потоке
+                } while (stream.DataAvailable);
                 Console.WriteLine(response.ToString());
                 stream.Close();
                 client.Close();
             }
             catch (SocketException e)
             {
-                Console.WriteLine("SocketException: {0}", e);
+                Console.WriteLine("SocketException: {0}", e.Message);
             }
             catch (Exception e)
             {

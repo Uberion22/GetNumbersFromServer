@@ -7,21 +7,21 @@ namespace GetNumbersFromServer
 {
     class FileSaverAndLoader
     {
-        private static string eventsBackupFilePath = @"D:\ServerResponces.txt";
+        private static string eventsBackupFilePath =@"D:\ServerResponses.txt";
 
         /// <summary>
-        /// Save undelivered events to file.
+        /// Save received numbers to file.
         /// </summary>
-        public static void SaveNumbersToFile(Dictionary<int, long> responces)
+        public static void SaveNumbersToFile(Dictionary<int, long> responses)
         {
             BinaryFormatter bf = new BinaryFormatter();
             FileStream file = File.Create(eventsBackupFilePath);
-            bf.Serialize(file, responces);
+            bf.Serialize(file, responses);
             file.Close();
         }
 
         /// <summary>
-        ///  Load undelivered events from file.
+        ///  Load received numbers from file.
         /// </summary>
         /// <returns>List of events</returns>
         public static Dictionary<int, long> LoadNumbersFromFile()
@@ -42,11 +42,9 @@ namespace GetNumbersFromServer
                 }
             }
 
-            recivedNumbers[1125] = -1;
-            recivedNumbers[1956] = -1;
-            recivedNumbers[1986] = -1;
-            //recivedNumbers[746] = -1;
-            //recivedNumbers[1036] = -1;
+            recivedNumbers[5] = -1;
+            recivedNumbers[19] = -1;
+            recivedNumbers[42] = -1;
             return recivedNumbers;
         }
     }

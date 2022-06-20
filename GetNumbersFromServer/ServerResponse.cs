@@ -3,12 +3,12 @@
 namespace GetNumbersFromServer
 {
     [Serializable]
-    class ServerResponce
+    class ServerResponse
     {
         public long Result { get; set; }
         public int Number { get; set; }
 
-        public ServerResponce(int number, long result)
+        public ServerResponse(int number, long result)
         {
             Result = result;
             Number = number;
