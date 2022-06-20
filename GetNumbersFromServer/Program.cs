@@ -12,10 +12,12 @@ namespace GetNumbersFromServer
         static async Task Main(string[] args)
         {
             var numbersLoader = new NumbersLoader(server, port);
-            numbersLoader.SendMessage(greetengsMessage);
+            //numbersLoader.SendMessage(greetengsMessage);
             //var result = 4925680.5f;
             var result = await numbersLoader.StartGettingNumbersTasksAsync();
-
+            //numbersLoader.SendMessage("Register\n");
+            //numbersLoader.GetNumbers(1);
+            //numbersLoader.GetNumberFromStream();
             numbersLoader.SendMessage($"Check {result}\n");
             Console.ReadLine();
         }
