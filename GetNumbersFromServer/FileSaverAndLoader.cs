@@ -26,23 +26,23 @@ namespace GetNumbersFromServer
         /// <returns>List of events</returns>
         public static Dictionary<int, long> LoadNumbersFromFile()
         {
-            var recivedNumbers = new Dictionary<int, long>();
+            var receivedNumbers = new Dictionary<int, long>();
             if (File.Exists(eventsBackupFilePath))
             {
                 BinaryFormatter bf = new BinaryFormatter();
                 FileStream file = File.Open(eventsBackupFilePath, FileMode.Open);
-                recivedNumbers = (Dictionary<int, long>)bf.Deserialize(file);
+                receivedNumbers = (Dictionary<int, long>)bf.Deserialize(file);
                 file.Close();
             }
             else
             {
                 for (int i = 1; i <= 2018; i++)
                 {
-                    recivedNumbers.Add(i, -1);
+                    receivedNumbers.Add(i, -1);
                 }
             }
 
-            return recivedNumbers;
+            return receivedNumbers;
         }
     }
 }

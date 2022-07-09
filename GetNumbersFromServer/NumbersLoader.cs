@@ -21,11 +21,15 @@ namespace GetNumbersFromServer
         private int nextIndex = 30;
         private int maxTasks = 30;
         private object locker = new object();
+        private object keyReceivingLocker = new object();
         private const int notReceieved = -1;
         private string key = "";
         private const string newKeyMes = "Register\n";
+        private const string keyHasExpiredText = "Key has expired";
         private readonly Encoding usedEncoding;
-
+        private int encdoeSymbolsCount = 3;
+        private int badSymvolsCount = 4;
+ 
         public NumbersLoader(string ipString, int port)
         {
             this.port = port;
@@ -43,8 +47,11 @@ namespace GetNumbersFromServer
         {
             AppDomain.CurrentDomain.ProcessExit += new EventHandler(SaveToFile);
             nextIndex = maxTasks;
-            ReceivedNumbers = FileSaverAndLoader.LoadNumbersFromFile();
-
+            if (!ReceivedNumbers.Any())
+            {
+                ReceivedNumbers = FileSaverAndLoader.LoadNumbersFromFile();
+            }
+            SendMessage(newKeyMes);
             List<Task<ServerResponse>> tasks = new List<Task<ServerResponse>>();
             var notReceived = ReceivedNumbers.Where(r => r.Value <= notReceieved).Select(k => k.Key).ToList();
             Console.WriteLine($"\nTraversing an array of keys {++currentStep}. Not received {notReceived.Count}");
@@ -59,9 +66,8 @@ namespace GetNumbersFromServer
                 if(!tasks.Any()) break;
 
                 var finishedIndex = await Task.WhenAny(tasks);
-                var k = ReceivedNumbers[finishedIndex.Result.Number] = finishedIndex.Result.Result;
+                ReceivedNumbers[finishedIndex.Result.Number] = finishedIndex.Result.Result;
                 tasks.Remove(finishedIndex);
-
                 lock (locker)
                 {
                     //FileSaverAndLoader.SaveNumbersToFile(receivedNumbers);
@@ -72,7 +78,6 @@ namespace GetNumbersFromServer
                         nextIndex++;
                     }
                 }
-
             }
 
             return ReceivedNumbers.Any(r => r.Value < 0) ? await Task.Run(StartGettingNumbersTasksAsync) : GetResult();
@@ -86,7 +91,7 @@ namespace GetNumbersFromServer
         {
             List<long> list = new List<long>();
             foreach (var value in ReceivedNumbers.Values) list.Add(value);
-            // Used easy wai with standart sorting;
+            // Used easy way with standart sorting;
             list.Sort();
             var result = (list[1008] + list[1009]) / 2.0f;
             Console.WriteLine($"All tasks completed, result: {result}");
@@ -102,11 +107,11 @@ namespace GetNumbersFromServer
         {
             try
             {
-                TcpClient client = new TcpClient();
+                using TcpClient client = new TcpClient();
                 client.Connect(ip, port);
-                NetworkStream stream = client.GetStream();
-                BinaryWriter writer = new BinaryWriter(stream);
-                BinaryReader reader = new BinaryReader(stream);
+                using NetworkStream stream = client.GetStream();
+                using BinaryWriter writer = new BinaryWriter(stream);
+                using BinaryReader reader = new BinaryReader(stream);
                 writer.Write(usedEncoding.GetBytes(message));
                 writer.Flush();
                 var responseInBytes = reader.ReadBytes(10000);
@@ -114,11 +119,12 @@ namespace GetNumbersFromServer
                 reader.Close();
                 writer.Close();
                 stream.Close();
-                Console.WriteLine(response);
                 if (message == newKeyMes)
                 {
-                    key = response;
+                    Console.Write($"New key received:   ");
+                    key = GetKeyFromResponseString(response);
                 }
+                Console.WriteLine(response);
             }
             catch (SocketException e)
             {
@@ -138,20 +144,21 @@ namespace GetNumbersFromServer
         /// <returns>Requested number, or -1 on failure</returns>
         public ServerResponse GetNumberFromStream(int index)
         {
-            TcpClient client = null;
+            using TcpClient client = new TcpClient();
             try
             {
-                client = new TcpClient();
+                var lastKey = key.Clone().ToString();
                 client.Connect(ip, port);
-                string message = $"{key}{index}\n";
-                NetworkStream stream = client.GetStream();
-                BinaryWriter writer = new BinaryWriter(stream);
+                string message = $"{key}|{index}\n";
+                using NetworkStream stream = client.GetStream();
+                using BinaryWriter writer = new BinaryWriter(stream);
                 writer.Write(usedEncoding.GetBytes(message));
                 writer.Flush();
                 BinaryReader reader = new BinaryReader(stream);
                 stream.ReadTimeout = maxDelay;
                 var res = usedEncoding.GetString(reader.ReadBytes(10000));
                 Console.WriteLine($"Received string: {res}");
+                CheckKeyHasExpiredMessage(res, lastKey);
                 reader.Close();
                 writer.Close();
                 stream.Close();
@@ -183,6 +190,23 @@ namespace GetNumbersFromServer
             }
 
             return currentNumber;
+        }
+
+        private void CheckKeyHasExpiredMessage(string result, string lastKey)
+        {
+            if(!result.Contains(keyHasExpiredText)) return;
+            
+            lock (keyReceivingLocker)
+            {
+                if(lastKey != key) return;
+
+                SendMessage(newKeyMes);
+            }
+        }
+
+        private string GetKeyFromResponseString(string str)
+        {
+            return str.Substring(encdoeSymbolsCount, str.Length - (badSymvolsCount + encdoeSymbolsCount));
         }
 
         public void SaveToFile(object sender, EventArgs e)
