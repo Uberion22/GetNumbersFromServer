@@ -116,9 +116,6 @@ namespace GetNumbersFromServer
                 writer.Flush();
                 var responseInBytes = reader.ReadBytes(10000);
                 var response = usedEncoding.GetString(responseInBytes);
-                reader.Close();
-                writer.Close();
-                stream.Close();
                 if (message == newKeyMes)
                 {
                     Console.Write($"New key received:   ");
@@ -159,9 +156,6 @@ namespace GetNumbersFromServer
                 var res = usedEncoding.GetString(reader.ReadBytes(10000));
                 Console.WriteLine($"Received string: {res}");
                 CheckKeyHasExpiredMessage(res, lastKey);
-                reader.Close();
-                writer.Close();
-                stream.Close();
                 var currentResult = GetNumberFromString(res, index);
 
                 return new ServerResponse(index, currentResult);
@@ -169,10 +163,6 @@ namespace GetNumbersFromServer
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
-            }
-            finally
-            {
-                client?.Close();
             }
 
             return new ServerResponse(index, notReceieved);
